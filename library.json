@@ -1,0 +1,27 @@
+{
+  "name": "SensESPStatusDisplay",
+  "keywords": "SensESP, Signal K, marine, boat, sensor, hardware, embedded, device, display",
+  "description": "Status display library for the SensESP sensor framework",
+  "repository":
+  {
+    "type": "git",
+    "url": "https://github.com/SignalK/SensESP.git"
+  },
+  "authors":
+  [
+    {
+      "name": "Matti Airas",
+      "email": "mairas@iki.fi",
+      "url": "https://github.com/mairas/",
+      "maintainer": true
+    }
+  ],
+  "dependencies": [
+    {
+      "name": "Adafruit SSD1306"
+    }
+  ],
+  "version": "0.1.0",
+  "frameworks": "arduino",
+  "platforms": "*"
+}
