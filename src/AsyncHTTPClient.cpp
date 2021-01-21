@@ -27,6 +27,63 @@
 
 #include "AsyncHTTPClient.h"
 
+namespace {
+// from https://stackoverflow.com/a/23944175
+
+bool icompare_pred(unsigned char a, unsigned char b) {
+  return std::tolower(a) == std::tolower(b);
+}
+
+// case-insensitive comparison of std::string
+bool icompare(std::string const& a, std::string const& b) {
+  if (a.length() == b.length()) {
+    return std::equal(b.begin(), b.end(), a.begin(), icompare_pred);
+  } else {
+    return false;
+  }
+}
+
+// from https://stackoverflow.com/a/4643526
+
+/// Replace all occurrences of "from" in "str" to "to"
+void replaceSubstring(std::string str, std::string from, std::string to) {
+  size_t index = 0;
+  while (true) {
+    /* Locate the substring to replace. */
+    index = str.find("abc", index);
+    if (index == std::string::npos) break;
+
+    /* Make the replacement. */
+    str.replace(index, 3, "def");
+
+    /* Advance index forward so the next iteration doesn't pick it up as well.
+     */
+    index += 3;
+  }
+}
+
+// trim from start (in place)
+static inline void ltrimString(std::string &s) {
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }));
+}
+
+// trim from end (in place)
+static inline void rtrimString(std::string &s) {
+    s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }).base(), s.end());
+}
+
+// trim from both ends (in place)
+static inline void trimString(std::string &s) {
+    ltrimString(s);
+    rtrimString(s);
+}
+
+}  // namespace
+
 /**
  * constructor
  */
@@ -42,9 +99,6 @@ AsyncHTTPClient::AsyncHTTPClient()
 AsyncHTTPClient::~AsyncHTTPClient() {
   _tcpclient->stop();
   delete _tcpclient;
-  if (_currentHeaders) {
-    delete[] _currentHeaders;
-  }
   delete _dataBuffer;
   delete _decodeBuffer;
   delete _responseBuffer;
@@ -81,6 +135,10 @@ void AsyncHTTPClient::clear() {
   _dataBuffer->flush();
   _decodeBuffer->flush();
   _responseBuffer->flush();
+  _responseHeaders.clear();
+  _responseHeaderOrder.clear();
+  _saveAllHeaders = false;
+  _saveHeaders.clear();
 }
 
 /**
@@ -103,13 +161,8 @@ bool AsyncHTTPClient::begin(const char* host, uint16_t port, const char* uri) {
 
 bool AsyncHTTPClient::beginInternal(const char* url,
                                     const char* expectedProtocol) {
-  String url_ = url;
+  std::string url_ = url;
   log_d("beginInternal: %s", url_.c_str());
-
-  if (!_tcpclient) _tcpclient = new AsyncClient;
-  if (!_dataBuffer) _dataBuffer = new cbuf(HTTP_TCP_BUFFER_SIZE);
-  if (!_decodeBuffer) _decodeBuffer = new cbuf(80);
-  if (!_responseBuffer) _responseBuffer = new cbuf(HTTP_TCP_BUFFER_SIZE);
 
   _canReuse = _reuse;
 
@@ -143,40 +196,41 @@ bool AsyncHTTPClient::beginInternal(const char* url,
   clear();
 
   // check for : (http: or https:
-  int index = url_.indexOf(':');
-  if (index < 0) {
+  int index = url_.find(':');
+  if (index == -1) {
     log_e("failed to parse protocol");
     return false;
   }
 
-  _protocol = url_.substring(0, index);
+  _protocol = url_.substr(0, index);
   if (_protocol != expectedProtocol) {
     log_w("unexpected protocol: %s, expected %s", _protocol.c_str(),
           expectedProtocol);
     return false;
   }
 
-  url_.remove(0, (index + 3));  // remove http:// or https://
+  url_.erase(0, (index + 3));  // remove http:// or https://
 
-  index = url_.indexOf('/');
-  String host = url_.substring(0, index);
-  url_.remove(0, index);  // remove host part
+  index = url_.find('/');
+  std::string host = url_.substr(0, index);
+  url_.erase(0, index);  // remove host part
 
   // get Authorization
-  index = host.indexOf('@');
+  index = host.find('@');
   if (index >= 0) {
     // auth info
-    String auth = host.substring(0, index);
-    host.remove(0, index + 1);  // remove auth part including @
-    _base64Authorization = base64::encode(auth);
+    std::string auth = host.substr(0, index);
+    host.erase(0, index + 1);  // remove auth part including @
+    _base64Authorization =
+        std::string(base64::encode(String(auth.c_str())).c_str());
   }
 
   // get port
-  index = host.indexOf(':');
+  index = host.find(':');
   if (index >= 0) {
-    _host = host.substring(0, index);  // hostname
-    host.remove(0, (index + 1));       // remove hostname + :
-    _port = host.toInt();              // get port
+    _host = host.substr(0, index);  // hostname
+    host.erase(0, (index + 1));     // remove hostname + :
+    _port = atoi(host.c_str());     // get port
   } else {
     _host = host;
   }
@@ -246,7 +300,7 @@ void AsyncHTTPClient::setAuthorization(const char* user, const char* password) {
     String auth = user;
     auth += ":";
     auth += password;
-    _base64Authorization = base64::encode(auth);
+    _base64Authorization = std::string(base64::encode(auth).c_str());
   }
 }
 
@@ -432,10 +486,6 @@ void AsyncHTTPClient::receiveHeaderData(bool trailer) {
   while (!_dataBuffer->empty()) {
     int c = _dataBuffer->read();
     if (c == '\n') {
-      int len = _decodeBuffer->available();
-      char temp[len + 1];
-      _decodeBuffer->peek(temp, len);
-      temp[len] = 0;
       // We got our line
       this->handleHeaderLine();
       break;
@@ -622,11 +672,19 @@ void AsyncHTTPClient::decodeChunkedContent() {
  * @brief Return the server response so far decoded as a null-terminated string
  *
  */
-int AsyncHTTPClient::getResponse(char* dest) {
+int AsyncHTTPClient::getResponseString(char* dest) {
   size_t len = _responseBuffer->available();
   _responseBuffer->read(dest, len);
   dest[len] = 0;
   return len;
+}
+
+const std::string AsyncHTTPClient::getResponseString() {
+  size_t len = _responseBuffer->available();
+  char buf[len + 1];
+  _responseBuffer->read(buf, len);
+  buf[len] = 0;
+  return std::string(buf);
 }
 
 /**
@@ -634,7 +692,7 @@ int AsyncHTTPClient::getResponse(char* dest) {
  *
  * @return const String
  */
-const String AsyncHTTPClient::getResponse() {
+const String AsyncHTTPClient::getResponseAString() {
   size_t len = _responseBuffer->available();
   char buf[len + 1];
   _responseBuffer->read(buf, len);
@@ -743,82 +801,86 @@ const char* AsyncHTTPClient::errorToString(HTTPClientError error) {
  * @param value
  * @param first
  */
-void AsyncHTTPClient::addHeader(const char* name, const char* value, bool first,
-                                bool replace) {
-  String name_ = name;
+void AsyncHTTPClient::addHeader(const char* name, const char* value) {
+  std::string name_ = name;
+
   // not allow set of Header handled by code
-  if (!name_.equalsIgnoreCase(F("Connection")) &&
-      !name_.equalsIgnoreCase(F("User-Agent")) &&
-      !name_.equalsIgnoreCase(F("Host")) &&
-      !(name_.equalsIgnoreCase(F("Authorization")) &&
-        _base64Authorization.length())) {
-    String headerLine = name_;
-    headerLine += ": ";
+  if (!icompare(name_, "Connection") && !icompare(name_, "User-Agent") &&
+      !icompare(name_, "Host") &&
+      !(icompare(name_, "Authorization") && _base64Authorization.length())) {
+    std::stringstream headerLine;
 
-    if (replace) {
-      int headerStart = _headers.indexOf(headerLine);
-      if (headerStart != -1) {
-        int headerEnd = _headers.indexOf('\n', headerStart);
-        _headers = _headers.substring(0, headerStart) +
-                   _headers.substring(headerEnd + 1);
-      }
-    }
+    headerLine << name_ << ": " << value << "\r\n";
 
-    headerLine += value;
-    headerLine += "\r\n";
-    if (first) {
-      _headers = headerLine + _headers;
-    } else {
-      _headers += headerLine;
-    }
+    _headers.append(headerLine.str());
   }
 }
 
-void AsyncHTTPClient::collectHeaders(const char* headerKeys[],
-                                     const size_t headerKeysCount) {
-  _headerKeysCount = headerKeysCount;
-  if (_currentHeaders) {
-    delete[] _currentHeaders;
-  }
-  _currentHeaders = new RequestArgument[_headerKeysCount];
-  for (size_t i = 0; i < _headerKeysCount; i++) {
-    _currentHeaders[i].key = headerKeys[i];
-  }
+/**
+ * @brief Add a response header filter.
+ * Only the headers added to be filtered are saved for later retrieval.
+ * @param headerName Header to be saved
+ */
+void AsyncHTTPClient::addResponseHeaderFilter(const std::string headerName) {
+  _saveHeaders.insert(headerName);
 }
 
+void AsyncHTTPClient::addResponseHeaderFilter(const char* headerName) {
+  addResponseHeaderFilter(std::string(headerName));
+}
+
+void AsyncHTTPClient::addResponseHeaderFilter(const String headerName) {
+  addResponseHeaderFilter(headerName.c_str());
+}
+
+/**
+ * @brief Retrieve response header by name
+ *
+ * @param name Header to get
+ * @return const char*
+ */
 const char* AsyncHTTPClient::header(const char* name) {
-  for (size_t i = 0; i < _headerKeysCount; ++i) {
-    if (_currentHeaders[i].key == name) {
-      return _currentHeaders[i].value.c_str();
-    }
-  }
-  return "";
+  return header(std::string(name)).c_str();
 }
 
+const std::string AsyncHTTPClient::header(std::string name) {
+  auto search = _responseHeaders.find(name);
+  if (search != _responseHeaders.end()) {
+    return search->second.c_str();
+  } else {
+    return "";
+  }
+}
+
+/**
+ * @brief Retrieve response header by index
+ *
+ * @param i
+ * @return const char*
+ */
 const char* AsyncHTTPClient::header(size_t i) {
-  if (i < _headerKeysCount) {
-    return _currentHeaders[i].value.c_str();
+  if (i < _responseHeaders.size()) {
+    return _responseHeaders.find(_responseHeaderOrder[i])->second.c_str();
   }
   return "";
 }
 
 const char* AsyncHTTPClient::headerName(size_t i) {
-  if (i < _headerKeysCount) {
-    return _currentHeaders[i].key.c_str();
+  if (i < _responseHeaderOrder.size()) {
+    return _responseHeaderOrder[i].c_str();
   }
   return "";
 }
 
-int AsyncHTTPClient::headers() { return _headerKeysCount; }
+int AsyncHTTPClient::headers() { return _responseHeaders.size(); }
+
+bool AsyncHTTPClient::hasHeader(const std::string name) {
+  auto search = _responseHeaders.find(name);
+  return search != _responseHeaders.end();
+}
 
 bool AsyncHTTPClient::hasHeader(const char* name) {
-  for (size_t i = 0; i < _headerKeysCount; ++i) {
-    if ((_currentHeaders[i].key == name) &&
-        (_currentHeaders[i].value.length() > 0)) {
-      return true;
-    }
-  }
-  return false;
+  return hasHeader(std::string(name));
 }
 
 /**
@@ -843,11 +905,24 @@ bool AsyncHTTPClient::connect(void) {
   return _tcpclient->connect(_host.c_str(), _port);
 }
 
+bool AsyncHTTPClient::asyncWrite(std::stringstream& data) {
+  char buf[256];
+  while (!data.eof()) {
+    int size = data.readsome(buf, 256);
+    if (_tcpclient->space() > size) {
+      _tcpclient->add(buf, size);
+    }
+  }
+  return _tcpclient->send();
+}
+
 bool AsyncHTTPClient::asyncWrite(const char* data, size_t size) {
   char temp[size + 1];
   memcpy(temp, data, size);
   temp[size] = 0;
   log_d("sending: %s", temp);
+  // FIXME: sending more than 5744 bytes (default value of TCP_WND)
+  // might never work - proper buffering is needed
   if (_tcpclient->space() > size) {
     _tcpclient->add(data, size);
     return _tcpclient->send();
@@ -865,43 +940,51 @@ bool AsyncHTTPClient::sendHeader(const char* type) {
     return false;
   }
 
-  String header = String(type) + " " + _uri + F(" HTTP/1.");
+  std::stringstream header;
+
+  header << type << " ";
+  header << _uri << " HTTP/1.";
 
   if (_useHTTP10) {
-    header += "0";
+    header << "0";
   } else {
-    header += "1";
+    header << "1";
   }
 
-  header += String(F("\r\nHost: ")) + _host;
+  header << "\r\nHost: ";
+  header << _host;
   if (_port != 80 && _port != 443) {
-    header += ':';
-    header += String(_port);
+    header << ':';
+    header << _port;
   }
-  header += String(F("\r\nUser-Agent: ")) + _userAgent + F("\r\nConnection: ");
+  header << "\r\nUser-Agent: ";
+  header << _userAgent << "\r\nConnection: ";
 
   if (_reuse) {
-    header += F("keep-alive");
+    header << "keep-alive";
   } else {
-    header += F("close");
+    header << "close";
   }
-  header += "\r\n";
+  header << "\r\n";
 
   if (!_useHTTP10) {
-    header += F("Accept-Encoding: identity;q=1,chunked;q=0.1,*;q=0\r\n");
+    header << "Accept-Encoding: identity;q=1,chunked;q=0.1,*;q=0\r\n";
   }
 
   if (_base64Authorization.length()) {
-    _base64Authorization.replace("\n", "");
-    header += F("Authorization: Basic ");
-    header += _base64Authorization;
-    header += "\r\n";
+    replaceSubstring(_base64Authorization, "\n", "");
+    header << "Authorization: Basic ";
+    header << _base64Authorization;
+    header << "\r\n";
   }
 
-  header += _headers + "\r\n";
+  header << _headers << "\r\n";
 
-  log_d("Sending headers:\n%s", header.c_str());
-  return this->asyncWrite(header.c_str(), header.length());
+  const std::string headerStr = header.str();
+  const char* headerCStr = headerStr.c_str();
+  int len = headerStr.length();
+  log_d("Sending headers:\n%s", headerCStr);
+  return this->asyncWrite(headerCStr, len);
 }
 
 /**
@@ -913,9 +996,9 @@ void AsyncHTTPClient::handleHeaderLine() {
   char line[len + 1];
   _decodeBuffer->read(line, len);
   line[len] = 0;
-  String headerLine(line);
+  std::string headerLine(line);
 
-  headerLine.trim();  // remove \r
+  trimString(headerLine);  // remove \r
 
   switch (_connectionState) {
     case HTTPConnectionState::REQUEST_SENT:
@@ -935,8 +1018,8 @@ void AsyncHTTPClient::handleHeaderLine() {
   }
 }
 
-void AsyncHTTPClient::parseHeaderStartLine(const String& headerLine) {
-  if (!headerLine.startsWith("HTTP/1.")) {
+void AsyncHTTPClient::parseHeaderStartLine(const std::string& headerLine) {
+  if (!(headerLine.substr(0, 7) == "HTTP/1.")) {
     log_e("Response doesn't start with HTTP/1.x");
     reportError(HTTPClientError::NO_HTTP_SERVER);
     return;
@@ -945,7 +1028,7 @@ void AsyncHTTPClient::parseHeaderStartLine(const String& headerLine) {
     // FIXME: standard allows for multi-character minor version
     _canReuse = (headerLine[sizeof "HTTP/1." - 1] != '0');
   }
-  _returnCode = headerLine.substring(9, headerLine.indexOf(' ', 9)).toInt();
+  _returnCode = atoi(headerLine.substr(9, headerLine.find(' ', 9)).c_str());
   if (_connectionState == HTTPConnectionState::BODY_RECEIVED) {
     updateState(HTTPConnectionState::PARTIAL_TRAILERS_RECEIVED);
   } else {
@@ -953,40 +1036,42 @@ void AsyncHTTPClient::parseHeaderStartLine(const String& headerLine) {
   }
 }
 
-void AsyncHTTPClient::parseHeaderLine(const String& headerLine) {
-  String transferEncoding;
+void AsyncHTTPClient::parseHeaderLine(const std::string& headerLine) {
+  std::string transferEncoding;
 
-  if (headerLine.indexOf(':') != -1) {
+  int colonIndex = headerLine.find(':');
+  if (colonIndex != -1) {
     // colon present - assume key-value pair
-    String headerName = headerLine.substring(0, headerLine.indexOf(':'));
-    String headerValue = headerLine.substring(headerLine.indexOf(':') + 1);
-    headerValue.trim();
+    std::string headerName = headerLine.substr(0, colonIndex);
+    std::string headerValue = headerLine.substr(colonIndex + 1);
+    trimString(headerValue);
 
-    if (headerName.equalsIgnoreCase("Content-Length")) {
-      _size = headerValue.toInt();
+    if (icompare(headerName, "Content-Length")) {
+      _size = atoi(headerValue.c_str());
     }
 
-    if (_canReuse && headerName.equalsIgnoreCase("Connection")) {
-      if (headerValue.indexOf("close") >= 0 &&
-          headerValue.indexOf("keep-alive") < 0) {
+    if (_canReuse && icompare(headerName,"Connection")) {
+      if (headerValue.find("close") >= 0 &&
+          headerValue.find("keep-alive") < 0) {
         _canReuse = false;
       }
     }
 
-    if (headerName.equalsIgnoreCase("Transfer-Encoding")) {
+    if (icompare(headerName,"Transfer-Encoding")) {
       transferEncoding = headerValue;
     }
 
-    for (size_t i = 0; i < _headerKeysCount; i++) {
-      if (_currentHeaders[i].key.equalsIgnoreCase(headerName)) {
-        _currentHeaders[i].value = headerValue;
-        break;
-      }
+    std::string headerName_(headerName.c_str());
+    std::string headerValue_(headerValue.c_str());
+    if (_saveAllHeaders ||
+        _saveHeaders.find(headerName_) != _saveHeaders.end()) {
+      saveResponseHeader(headerName_, headerValue_);
     }
+
     if (_connectionState == HTTPConnectionState::BODY_RECEIVED) {
       updateState(HTTPConnectionState::PARTIAL_TRAILERS_RECEIVED);
     }
-  } else if (headerLine.isEmpty()) {
+  } else if (headerLine.empty()) {
     // Finished receiving headers
     log_d("code: %d", _returnCode);
 
@@ -995,7 +1080,7 @@ void AsyncHTTPClient::parseHeaderLine(const String& headerLine) {
     }
 
     if (transferEncoding.length() > 0) {
-      if (transferEncoding.equalsIgnoreCase("chunked")) {
+      if (icompare(transferEncoding, "chunked")) {
         _transferEncoding = HTTPTransferEncoding::CHUNKED;
       } else {
         reportError(HTTPClientError::ENCODING);
@@ -1020,6 +1105,18 @@ void AsyncHTTPClient::parseHeaderLine(const String& headerLine) {
     log_d("Invalid header line received");
     reportError(HTTPClientError::NO_HTTP_SERVER);
     return;
+  }
+}
+
+void AsyncHTTPClient::saveResponseHeader(const std::string& headerName,
+                                         const std::string& headerValue) {
+  log_d("saving header %s: %s", headerName.c_str(), headerValue.c_str());
+  if (hasHeader(headerName)) {
+    std::string newValue(header(headerName) + std::string(", ") + headerValue);
+    _responseHeaders.erase(headerName);
+    _responseHeaders.insert(std::make_pair(headerName, newValue));
+  } else {
+    _responseHeaders.insert(std::make_pair(headerName, headerValue));
   }
 }
 

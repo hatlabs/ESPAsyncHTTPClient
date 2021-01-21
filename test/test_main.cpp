@@ -36,7 +36,7 @@ void test_http_get_200() {
   TEST_ASSERT_EQUAL(200, http.getHTTPStatus());
   
   String expected = "User-agent: *\nDisallow: /deny\n";
-  String response = http.getResponse();
+  String response = http.getResponseAString();
   TEST_ASSERT_EQUAL_STRING(expected.c_str(), response.c_str());
 
   Serial.printf("asserted successfully\n");
@@ -168,7 +168,7 @@ void test_http_post_200() {
   }
 
   TEST_ASSERT_EQUAL(200, http.getHTTPStatus());
-  String payload = http.getResponse();
+  String payload = http.getResponseAString();
   TEST_ASSERT_TRUE(payload.indexOf("\"data\": \"param1=value1\",") >= 0);
   http.close();
 }
@@ -199,7 +199,7 @@ void test_http_get_auth_200() {
   }
   
   TEST_ASSERT_EQUAL(200, http.getHTTPStatus());
-  String payload = http.getResponse();
+  String payload = http.getResponseAString();
   String expected = "{\n  \"authenticated\": true, \n  \"token\": \"123456\"\n}\n";
   TEST_ASSERT_EQUAL_STRING(expected.c_str(), payload.c_str());
   http.close();
@@ -232,12 +232,53 @@ void test_http_get_multi_packet_200() {
 
   TEST_ASSERT_EQUAL(200, http.getHTTPStatus());
   
-  String response = http.getResponse();
+  String response = http.getResponseAString();
 
   TEST_ASSERT_EQUAL(3000, response.length());
 
   http.close();
 }
+
+void test_http_get_headers() {
+  AsyncHTTPClient http;
+  http.begin("http://httpbin.org/robots.txt");
+  
+  bool done = false;
+
+  http.addResponseHeaderFilter("Server");
+  http.addResponseHeaderFilter("Access-Control-Allow-Origin");
+
+  http.GET([&](HTTPConnectionState state) {
+    switch (state) {
+      case HTTPConnectionState::DISCONNECTED:
+      case HTTPConnectionState::ERROR:
+      case HTTPConnectionState::DONE:
+        done = true;
+        break;
+      default:
+        break;
+    }
+  });
+
+  // verify that the operation was not synchronous
+  TEST_ASSERT_EQUAL(false, done);
+
+  while (!done) {
+    delay(50);
+  }
+
+  TEST_ASSERT_EQUAL(200, http.getHTTPStatus());
+  
+  const char* respHeader = http.header("Server");
+  TEST_ASSERT_EQUAL_STRING("gunicorn/19.9.0", respHeader);
+
+  Serial.printf("asserted successfully\n");
+
+  http.close();
+}
+
+/////////////////
+// scaffolding below
 
 
 WiFiMulti wifiMulti;
@@ -258,7 +299,7 @@ void setup() {
     Serial.println("Establishing connection to WiFi..");
   }
   delay(200);
-  UNITY_BEGIN();
+  //UNITY_BEGIN();
 }
 
 void loop() {
@@ -269,6 +310,7 @@ void loop() {
   RUN_TEST(test_http_post_200);
   RUN_TEST(test_http_get_auth_200);
   RUN_TEST(test_http_get_multi_packet_200);
+  RUN_TEST(test_http_get_headers);
 
-  UNITY_END();
+  //UNITY_END();
 }

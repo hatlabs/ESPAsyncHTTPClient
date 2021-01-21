@@ -30,6 +30,13 @@
 #include <AsyncTCP.h>
 #endif
 
+#include <string>
+#include <sstream>
+#include <unordered_map>
+#include <vector>
+#include <unordered_set>
+
+
 #define HTTPCLIENT_DEFAULT_CONNECT_TIMEOUT 5000
 #define HTTPCLIENT_DEFAULT_RESPONSE_TIMEOUT 5000
 
@@ -171,36 +178,38 @@ class AsyncHTTPClient {
   bool sendRequest(const char* type, const char* payload, size_t size,
                    ConnectionEventHandler callback);
 
-  void addHeader(const char* name, const char* value, bool first = false,
-                 bool replace = true);
+  void addHeader(const char* name, const char* value);
 
   /// Response handling
-  void collectHeaders(const char* headerKeys[], const size_t headerKeysCount);
-  const char* header(const char* name);  // get request header value by name
-  const char* header(size_t i);          // get request header value by number
-  const char* headerName(size_t i);      // get request header name by number
-  int headers();                         // get header count
-  bool hasHeader(const char* name);      // check if header exists
+  void addResponseHeaderFilter(const char* headerName);
+  void addResponseHeaderFilter(const String headerName);
+  void addResponseHeaderFilter(const std::string headerName);
+  void saveAllHeaders(bool saveAll=true) { _saveAllHeaders = saveAll; } 
+  const char* header(const char* name);
+  const String header(const String name);
+  const std::string header(const std::string name);
+  const char* header(size_t i);
+  const char* headerName(size_t i);
+  int headers();
+  bool hasHeader(const char* name);
+  bool hasHeader(const String name);
+  bool hasHeader(const std::string name);
 
   int getSize(void);
   int getHTTPStatus() { return _returnCode; }
 
-  int getResponse(char* dest);
-  const String getResponse();
+  int getResponseString(char* dest);
+  const std::string getResponseString();
+  const String getResponseAString();
   HTTPClientError getLastError() { return _lastError; };
   const char* errorToString(HTTPClientError error);
   const char* HTTPConnectionStateToString(HTTPConnectionState state);
 
-  const cbuf* getResponseBuffer() { return _responseBuffer; }
+  const cbuf* getResponse() { return _responseBuffer; }
 
  protected:
   HTTPConnectionState _connectionState = HTTPConnectionState::DISCONNECTED;
   HTTPClientError _lastError = HTTPClientError::NO_ERROR;
-
-  struct RequestArgument {
-    String key;
-    String value;
-  };
 
   void updateState(HTTPConnectionState newState, bool announce = true,
                    bool announceAlways = false);
@@ -213,30 +222,31 @@ class AsyncHTTPClient {
   bool sendHeader(const char* type);
   int handleHeaderResponse();
   void handleHeaderLine();
-  void parseHeaderStartLine(const String& headerLine);
-  void parseHeaderLine(const String& headerLine);
+  void parseHeaderStartLine(const std::string& headerLine);
+  void parseHeaderLine(const std::string& headerLine);
 
   bool asyncWrite(const char* data, size_t size);
+  bool asyncWrite(std::stringstream& data);
 
   AsyncClient* _tcpclient = NULL;
 
   ConnectionEventHandler _clientEventHandler = NULL;
 
   /// request handling
-  String _host;
+  std::string _host;
   uint16_t _port = 0;
   int32_t _connectTimeout = HTTPCLIENT_DEFAULT_CONNECT_TIMEOUT;
   bool _reuse = true;
   uint16_t _responseTimeout = HTTPCLIENT_DEFAULT_RESPONSE_TIMEOUT;
   bool _useHTTP10 = false;
 
-  String _uri;
-  String _protocol;
-  String _headers;
-  String _userAgent = "AsyncHTTPClient";
-  String _base64Authorization;
+  std::string _uri;
+  std::string _protocol;
+  std::string _headers;
+  std::string _userAgent = "AsyncHTTPClient";
+  std::string _base64Authorization;
 
-  String _requestType;
+  std::string _requestType;
   char* _requestPayload = NULL;
 
   void disconnectEventHandler(void* args);
@@ -266,8 +276,13 @@ class AsyncHTTPClient {
   void decodeIdentityContent();
   void decodeChunkedContent();
 
-  RequestArgument* _currentHeaders = nullptr;
-  size_t _headerKeysCount = 0;
+  std::unordered_map<std::string, std::string> _responseHeaders;
+  std::vector<std::string> _responseHeaderOrder;
+  // save only these headers
+  std::unordered_set<std::string> _saveHeaders;
+  bool _saveAllHeaders = false;
+
+  void saveResponseHeader(const std::string& headerName, const std::string& headerValue);
 
   int _returnCode = 0;
   int _size = -1;
