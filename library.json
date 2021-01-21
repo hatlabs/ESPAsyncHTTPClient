@@ -1,11 +1,11 @@
 {
-  "name": "SensESPStatusDisplay",
-  "keywords": "SensESP, Signal K, marine, boat, sensor, hardware, embedded, device, display",
-  "description": "Status display library for the SensESP sensor framework",
+  "name": "ESPAsyncHTTPClient",
+  "keywords": "HTTP, async, ESP8266, ESP32, client",
+  "description": "Asynchronous HTTP client library for ES8266 and ESP32",
   "repository":
   {
     "type": "git",
-    "url": "https://github.com/SignalK/SensESP.git"
+    "url": "https://github.com/hatlabs/ESPAsyncHTTPClient.git"
   },
   "authors":
   [
@@ -18,10 +18,10 @@
   ],
   "dependencies": [
     {
-      "name": "Adafruit SSD1306"
+      "name": "AsyncTCP"
     }
   ],
   "version": "0.1.0",
   "frameworks": "arduino",
-  "platforms": "*"
+  "platforms": ["espressif8266", "espressif32"]
 }
