@@ -153,8 +153,6 @@ bool AsyncHTTPClient::begin(const char* host, uint16_t port, const char* uri) {
 bool AsyncHTTPClient::begin_internal(const char* url,
                                      const char* expected_protocol) {
   std::string url_ = url;
-  log_d("beginInternal: %s", url_.c_str());
-
   can_reuse_ = reuse_;
 
   tcpclient_.onConnect(
@@ -188,7 +186,6 @@ bool AsyncHTTPClient::begin_internal(const char* url,
       },
       &tcpclient_);
 
-  log_v("url: %s", url_.c_str());
   clear();
 
   // check for : (http: or https:
@@ -231,7 +228,6 @@ bool AsyncHTTPClient::begin_internal(const char* url,
     host_ = host;
   }
   uri_ = url_;
-  log_d("host: %s port: %d url: %s", host_.c_str(), port_, uri_.c_str());
   return true;
 }
 
@@ -413,7 +409,6 @@ void AsyncHTTPClient::connect_event_handler(void* arg) {
         report_error(HTTPClientError::SEND_PAYLOAD_FAILED);
         return;
       }
-      log_d("payload sent");
     }
 
     update_state(HTTPConnectionState::REQUEST_SENT);
@@ -424,11 +419,7 @@ void AsyncHTTPClient::disconnect_event_handler(void* args) {
 }
 
 void AsyncHTTPClient::data_event_handler(void* args, void* data, size_t len) {
-  char temp[len + 1];
-  memcpy(temp, data, len);
-  temp[len] = 0;
   data_stream_.write((char*)data, len);
-  log_d("got data:\n%s\n---", (char*)data);
   while (data_stream_.rdbuf()->in_avail()) {
     switch (this->connection_state_) {
       case HTTPConnectionState::CONNECTED:
@@ -969,7 +960,6 @@ bool AsyncHTTPClient::send_header(const char* type) {
   const std::string header_str = header.str();
   const char* header_cstr = header_str.c_str();
   int len = header_str.length();
-  log_d("Sending headers:\n%s", header_cstr);
   return this->async_write(header_cstr, len);
 }
 
@@ -1021,8 +1011,6 @@ void AsyncHTTPClient::parse_header_start_line(const std::string& header_line) {
 
 void AsyncHTTPClient::parse_header_line(const std::string& header_line) {
   std::string transfer_encoding;
-
-  log_v("Parsing header line: %s", header_line.c_str());
 
   int colon_index = header_line.find(':');
   if (colon_index != -1) {
@@ -1095,7 +1083,6 @@ void AsyncHTTPClient::parse_header_line(const std::string& header_line) {
 
 void AsyncHTTPClient::save_response_header(const std::string& header_name,
                                            const std::string& header_value) {
-  log_d("saving header %s: %s", header_name.c_str(), header_value.c_str());
   if (has_header(header_name)) {
     std::string new_value(header(header_name) + std::string(", ") +
                           header_value);
