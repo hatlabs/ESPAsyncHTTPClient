@@ -21,7 +21,6 @@
 #define AsyncHTTPClient_H_
 
 #include <Arduino.h>
-#include <cbuf.h>
 
 #include <memory>
 #if defined(ESP8266)
@@ -30,12 +29,11 @@
 #include <AsyncTCP.h>
 #endif
 
-#include <string>
 #include <sstream>
+#include <string>
 #include <unordered_map>
-#include <vector>
 #include <unordered_set>
-
+#include <vector>
 
 #define HTTPCLIENT_DEFAULT_CONNECT_TIMEOUT 5000
 #define HTTPCLIENT_DEFAULT_RESPONSE_TIMEOUT 5000
@@ -146,7 +144,6 @@ enum class HTTPConnectionState {
   ERROR = 22
 };
 
-// FIXME: evt_type should be an enum
 typedef std::function<void(HTTPConnectionState state)> ConnectionEventHandler;
 
 class AsyncHTTPClient {
@@ -161,134 +158,137 @@ class AsyncHTTPClient {
 
   bool connected(void);
 
-  void setReuse(bool reuse);  /// keep-alive
-  void setUserAgent(const char* userAgent);
-  void setAuthorization(const char* user, const char* password);
-  void setAuthorization(const char* auth);
-  void setConnectTimeout(uint32_t connectTimeout);
-  void setResponseTimeout(uint32_t timeout);
+  void reuse(bool reuse);  /// keep-alive
+  void user_agent(const char* user_agent);
+  void authorization(const char* user, const char* password);
+  void authorization(const char* auth);
+  void connect_timeout(uint32_t connect_timeout);
+  void response_timeout(uint32_t timeout);
 
-  void useHTTP10(bool usehttp10 = true);
+  void use_http_10(bool use_http_10 = true);
 
   /// request handling
   bool GET(ConnectionEventHandler callback);
   bool PATCH(const char* payload, size_t size, ConnectionEventHandler callback);
   bool POST(const char* payload, size_t size, ConnectionEventHandler callback);
   bool PUT(const char* payload, size_t size, ConnectionEventHandler callback);
-  bool sendRequest(const char* type, const char* payload, size_t size,
-                   ConnectionEventHandler callback);
+  bool send_request(const char* type, const char* payload, size_t size,
+                    ConnectionEventHandler callback);
 
-  void addHeader(const char* name, const char* value);
+  void add_header(const char* name, const char* value);
 
   /// Response handling
-  void addResponseHeaderFilter(const char* headerName);
-  void addResponseHeaderFilter(const String headerName);
-  void addResponseHeaderFilter(const std::string headerName);
-  void saveAllHeaders(bool saveAll=true) { _saveAllHeaders = saveAll; } 
+  void add_response_header_filter(const char* header_name);
+  void add_response_header_filter(const String header_name);
+  void add_response_header_filter(const std::string header_name);
+  void save_all_headers(bool save_all = true) { _save_all_headers = save_all; }
   const char* header(const char* name);
   const String header(const String name);
   const std::string header(const std::string name);
   const char* header(size_t i);
-  const char* headerName(size_t i);
+  const char* header_name(size_t i);
   int headers();
-  bool hasHeader(const char* name);
-  bool hasHeader(const String name);
-  bool hasHeader(const std::string name);
+  bool has_header(const char* name);
+  bool has_header(const String name);
+  bool has_header(const std::string name);
 
-  int getSize(void);
-  int getHTTPStatus() { return _returnCode; }
+  int size(void);
+  int http_status() { return response_status_code_; }
 
-  int getResponseString(char* dest);
-  const std::string getResponseString();
-  const String getResponseAString();
-  HTTPClientError getLastError() { return _lastError; };
-  const char* errorToString(HTTPClientError error);
-  const char* HTTPConnectionStateToString(HTTPConnectionState state);
+  int response_string(char* dest);
+  const std::string response_string();
+  const String response_arduino_string();
+  HTTPClientError last_error() { return last_error_; };
+  const char* error_string(HTTPClientError error);
+  const char* connection_state_string(HTTPConnectionState state);
 
-  const cbuf* getResponse() { return _responseBuffer; }
+  const std::stringstream& response() { return response_stream_; }
 
  protected:
-  HTTPConnectionState _connectionState = HTTPConnectionState::DISCONNECTED;
-  HTTPClientError _lastError = HTTPClientError::NO_ERROR;
+  HTTPConnectionState connection_state_ = HTTPConnectionState::DISCONNECTED;
+  HTTPClientError last_error_ = HTTPClientError::NO_ERROR;
 
-  void updateState(HTTPConnectionState newState, bool announce = true,
-                   bool announceAlways = false);
+  void update_state(HTTPConnectionState new_state, bool announce = true,
+                    bool announce_always = false);
 
-  bool beginInternal(const char* url, const char* expectedProtocol);
+  bool begin_internal(const char* url, const char* expected_protocol);
   void disconnect(bool keepalive = false);
   void clear();
-  int reportError(HTTPClientError error);
+  int report_error(HTTPClientError error);
   bool connect(void);
-  bool sendHeader(const char* type);
-  int handleHeaderResponse();
-  void handleHeaderLine();
-  void parseHeaderStartLine(const std::string& headerLine);
-  void parseHeaderLine(const std::string& headerLine);
+  bool send_header(const char* type);
+  int handle_header_response();
+  void handle_header_line();
+  void parse_header_start_line(const std::string& header_line);
+  void parse_header_line(const std::string& header_line);
 
-  bool asyncWrite(const char* data, size_t size);
-  bool asyncWrite(std::stringstream& data);
+  bool async_write(const char* data, size_t size);
+  bool async_write(std::stringstream& data);
+  bool async_write(std::string& data);
 
-  AsyncClient* _tcpclient = NULL;
+  AsyncClient* tcpclient_ = NULL;
 
-  ConnectionEventHandler _clientEventHandler = NULL;
+  ConnectionEventHandler client_event_handler_ = NULL;
 
   /// request handling
-  std::string _host;
-  uint16_t _port = 0;
-  int32_t _connectTimeout = HTTPCLIENT_DEFAULT_CONNECT_TIMEOUT;
-  bool _reuse = true;
-  uint16_t _responseTimeout = HTTPCLIENT_DEFAULT_RESPONSE_TIMEOUT;
-  bool _useHTTP10 = false;
+  std::string host_;
+  uint16_t port_ = 0;
+  int32_t connect_timeout_ = HTTPCLIENT_DEFAULT_CONNECT_TIMEOUT;
+  bool reuse_ = true;
+  uint16_t response_timeout_ = HTTPCLIENT_DEFAULT_RESPONSE_TIMEOUT;
+  bool use_http_10_ = false;
 
-  std::string _uri;
-  std::string _protocol;
-  std::string _headers;
-  std::string _userAgent = "AsyncHTTPClient";
-  std::string _base64Authorization;
+  std::string uri_;
+  std::string protocol_;
+  std::string headers_;
+  std::string user_agent_ = "AsyncHTTPClient";
+  std::string base64_authorization;
 
-  std::string _requestType;
-  char* _requestPayload = NULL;
+  std::string request_type_;
+  std::string request_payload_;
 
-  void disconnectEventHandler(void* args);
-  void dataEventHandler(void* args, void* data, size_t len);
-  void errorEventHandler(void* args, int8_t error);
-  void timeoutEventHandler(void* args, uint32_t time);
-  void pollEventHandler(void* args);
+  void disconnect_event_handler(void* args);
+  void data_event_handler(void* args, void* data, size_t len);
+  void error_event_handler(void* args, int8_t error);
+  void timeout_event_handler(void* args, uint32_t time);
+  void poll_event_handler(void* args);
 
   /// Response handling
 
   // buffer to hold incoming data
-  cbuf* _dataBuffer = NULL;
+  std::stringstream data_stream_;
   // buffer to data in progress of being decoded (HTTP headers, chunk headers)
-  cbuf* _decodeBuffer = NULL;
+  std::stringstream decode_stream_;
   // buffer to hold decoded content data
-  cbuf* _responseBuffer = NULL;
+  std::stringstream response_stream_;
 
   // amount of content received
-  int _contentBytesReceived = 0;
+  int content_bytes_received_ = 0;
   // amount of chunked data still to be received
-  int _chunkLeft = 0;
+  int chunk_left_ = 0;
 
-  void receiveHeaderData(bool trailer = false);
-  void receiveBodyData();
+  void receive_header_data(bool trailer = false);
+  void receive_body_data();
 
-  void decodeBodyData();
-  void decodeIdentityContent();
-  void decodeChunkedContent();
+  void decode_body_data();
+  void decode_identity_content();
+  void decode_chunked_content();
+  int next_chunk_size(std::stringstream& decode_stream);
 
-  std::unordered_map<std::string, std::string> _responseHeaders;
-  std::vector<std::string> _responseHeaderOrder;
+  std::unordered_map<std::string, std::string> response_headers_;
+  std::vector<std::string> response_header_order_;
   // save only these headers
-  std::unordered_set<std::string> _saveHeaders;
-  bool _saveAllHeaders = false;
+  std::unordered_set<std::string> save_headers_;
+  bool _save_all_headers = false;
 
-  void saveResponseHeader(const std::string& headerName, const std::string& headerValue);
+  void save_response_header(const std::string& header_name,
+                            const std::string& header_value);
 
-  int _returnCode = 0;
-  int _size = -1;
-  bool _canReuse = false;
-  unsigned long _lastActivityMillis = 0;
-  HTTPTransferEncoding _transferEncoding = HTTPTransferEncoding::IDENTITY;
+  int response_status_code_ = 0;
+  int content_size_ = -1;
+  bool can_reuse_ = false;
+  unsigned long last_activity_millis_ = 0;
+  HTTPTransferEncoding transfer_encoding_ = HTTPTransferEncoding::IDENTITY;
 };
 
 #endif /* HTTPClient_H_ */

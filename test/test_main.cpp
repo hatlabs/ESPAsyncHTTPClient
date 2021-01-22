@@ -6,7 +6,7 @@
 #include <WiFi.h>
 #include <WiFiMulti.h>
 
-#include "AsyncHTTPClient.h"
+#include "async_http_client.h"
 
 void test_http_get_200() {
   AsyncHTTPClient http;
@@ -33,13 +33,11 @@ void test_http_get_200() {
     delay(50);
   }
 
-  TEST_ASSERT_EQUAL(200, http.getHTTPStatus());
+  TEST_ASSERT_EQUAL(200, http.http_status());
   
   String expected = "User-agent: *\nDisallow: /deny\n";
-  String response = http.getResponseAString();
+  String response = http.response_arduino_string();
   TEST_ASSERT_EQUAL_STRING(expected.c_str(), response.c_str());
-
-  Serial.printf("asserted successfully\n");
 
   http.close();
 }
@@ -68,7 +66,7 @@ void test_http_get_dns_site_not_found() {
     delay(50);
   }
 
-  TEST_ASSERT_EQUAL(HTTPClientError::DNS_FAILED, http.getLastError());
+  TEST_ASSERT_EQUAL(HTTPClientError::DNS_FAILED, http.last_error());
   http.close();
 }
 
@@ -97,7 +95,7 @@ void test_http_get_connection_refused() {
     delay(50);
   }
 
-  TEST_ASSERT_EQUAL(HTTPClientError::CONNECTION_REFUSED, http.getLastError());
+  TEST_ASSERT_EQUAL(HTTPClientError::CONNECTION_REFUSED, http.last_error());
   http.close();
 }
 
@@ -108,7 +106,7 @@ void test_http_get_404() {
 
   int done = false;
   http.GET([&](HTTPConnectionState state) {
-    // Serial.printf("New state: %s\n", http.HTTPConnectionStateToString(state));
+    // Serial.printf("New state: %s\n", http.connection_state_string(state));
     switch (state) {
       case HTTPConnectionState::DISCONNECTED:
       case HTTPConnectionState::ERROR:
@@ -126,7 +124,7 @@ void test_http_get_404() {
     delay(50);
   }
 
-  TEST_ASSERT_EQUAL(404, http.getHTTPStatus());
+  TEST_ASSERT_EQUAL(404, http.http_status());
   http.close();
 }
 
@@ -135,8 +133,8 @@ void test_http_post_200() {
   bool result = http.begin("http://httpbin.org/post");
   TEST_ASSERT_EQUAL(true, result);
 
-  http.setConnectTimeout(2000);
-  http.setResponseTimeout(2000);
+  http.connect_timeout(2000);
+  http.response_timeout(2000);
 
   const char* request_payload = "param1=value1";
   size_t len = strlen(request_payload);
@@ -144,7 +142,7 @@ void test_http_post_200() {
   bool done = false;
   http.POST(request_payload, len,
     [&](HTTPConnectionState state) {
-      // Serial.printf("New state: %s\n", http.HTTPConnectionStateToString(state));
+      // Serial.printf("New state: %s\n", http.connection_state_string(state));
       switch (state) {
         case HTTPConnectionState::DISCONNECTED:
           Serial.println("DISCONNECTED");
@@ -167,8 +165,8 @@ void test_http_post_200() {
     delay(50);
   }
 
-  TEST_ASSERT_EQUAL(200, http.getHTTPStatus());
-  String payload = http.getResponseAString();
+  TEST_ASSERT_EQUAL(200, http.http_status());
+  String payload = http.response_arduino_string();
   TEST_ASSERT_TRUE(payload.indexOf("\"data\": \"param1=value1\",") >= 0);
   http.close();
 }
@@ -177,7 +175,7 @@ void test_http_get_auth_200() {
   AsyncHTTPClient http;
   bool result = http.begin("http://httpbin.org/bearer");
   TEST_ASSERT_EQUAL(true, result);
-  http.addHeader("Authorization", "Bearer 123456");
+  http.add_header("Authorization", "Bearer 123456");
 
     int done = false;
   http.GET([&](HTTPConnectionState state) {
@@ -198,8 +196,8 @@ void test_http_get_auth_200() {
     delay(50);
   }
   
-  TEST_ASSERT_EQUAL(200, http.getHTTPStatus());
-  String payload = http.getResponseAString();
+  TEST_ASSERT_EQUAL(200, http.http_status());
+  String payload = http.response_arduino_string();
   String expected = "{\n  \"authenticated\": true, \n  \"token\": \"123456\"\n}\n";
   TEST_ASSERT_EQUAL_STRING(expected.c_str(), payload.c_str());
   http.close();
@@ -230,9 +228,9 @@ void test_http_get_multi_packet_200() {
     delay(50);
   }
 
-  TEST_ASSERT_EQUAL(200, http.getHTTPStatus());
+  TEST_ASSERT_EQUAL(200, http.http_status());
   
-  String response = http.getResponseAString();
+  String response = http.response_arduino_string();
 
   TEST_ASSERT_EQUAL(3000, response.length());
 
@@ -245,8 +243,8 @@ void test_http_get_headers() {
   
   bool done = false;
 
-  http.addResponseHeaderFilter("Server");
-  http.addResponseHeaderFilter("Access-Control-Allow-Origin");
+  http.add_response_header_filter("Server");
+  http.add_response_header_filter("Access-Control-Allow-Origin");
 
   http.GET([&](HTTPConnectionState state) {
     switch (state) {
@@ -267,7 +265,7 @@ void test_http_get_headers() {
     delay(50);
   }
 
-  TEST_ASSERT_EQUAL(200, http.getHTTPStatus());
+  TEST_ASSERT_EQUAL(200, http.http_status());
   
   const char* respHeader = http.header("Server");
   TEST_ASSERT_EQUAL_STRING("gunicorn/19.9.0", respHeader);
@@ -299,7 +297,7 @@ void setup() {
     Serial.println("Establishing connection to WiFi..");
   }
   delay(200);
-  //UNITY_BEGIN();
+  UNITY_BEGIN();
 }
 
 void loop() {
@@ -312,5 +310,5 @@ void loop() {
   RUN_TEST(test_http_get_multi_packet_200);
   RUN_TEST(test_http_get_headers);
 
-  //UNITY_END();
+  UNITY_END();
 }

@@ -7,11 +7,12 @@
 - ESP8266 support
 - chunked transfer encoding hasn't been tested
 - keepalive functionality hasn't been tested
+- multiline headers not supported yet
 - output buffering (sending more than 5744 bytes at a time)
 - anything outside of the unit tests, basically...
 
 ## To be done
 
-- Internal buffer handling is wasteful. `cbuf` should be replaced with
-  a char* deque implementation or something similar.
-- Response header handling is clunky and dumb
+- stringstreams are inefficient and slow and should be replaced with
+  some dynamic ring buffer implementation
+- Rewrite the parser as a push-down state automaton?
