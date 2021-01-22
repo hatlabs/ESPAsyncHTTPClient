@@ -242,7 +242,7 @@ class AsyncHTTPClient {
   std::string protocol_;
   std::string headers_;
   std::string user_agent_ = "AsyncHTTPClient";
-  std::string base64_authorization;
+  std::string base64_authorization_;
 
   std::string request_type_;
   std::string request_payload_;

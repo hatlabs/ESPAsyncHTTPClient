@@ -217,7 +217,7 @@ bool AsyncHTTPClient::begin_internal(const char* url,
     // auth info
     std::string auth = host.substr(0, index);
     host.erase(0, index + 1);  // remove auth part including @
-    base64_authorization =
+    base64_authorization_ =
         std::string(base64::encode(String(auth.c_str())).c_str());
   }
 
@@ -293,7 +293,7 @@ void AsyncHTTPClient::authorization(const char* user, const char* password) {
     String auth = user;
     auth += ":";
     auth += password;
-    base64_authorization = std::string(base64::encode(auth).c_str());
+    base64_authorization_ = std::string(base64::encode(auth).c_str());
   }
 }
 
@@ -303,7 +303,7 @@ void AsyncHTTPClient::authorization(const char* user, const char* password) {
  */
 void AsyncHTTPClient::authorization(const char* auth) {
   if (auth) {
-    base64_authorization = auth;
+    base64_authorization_ = auth;
   }
 }
 
@@ -786,7 +786,7 @@ void AsyncHTTPClient::add_header(const char* name, const char* value) {
   // not allow set of Header handled by code
   if (!icompare(name_, "Connection") && !icompare(name_, "User-Agent") &&
       !icompare(name_, "Host") &&
-      !(icompare(name_, "Authorization") && base64_authorization.length())) {
+      !(icompare(name_, "Authorization") && base64_authorization_.length())) {
     std::stringstream header_line;
 
     header_line << name_ << ": " << value << "\r\n";
@@ -957,10 +957,10 @@ bool AsyncHTTPClient::send_header(const char* type) {
     header << "Accept-Encoding: identity;q=1,chunked;q=0.1,*;q=0\r\n";
   }
 
-  if (base64_authorization.length()) {
-    replace_substring(base64_authorization, "\n", "");
-    header << "Authorization: Basic ";
-    header << base64_authorization;
+  if (base64_authorization_.length()) {
+    replace_substring(base64_authorization_, "\n", "");
+    header << "Authorization: ";
+    header << base64_authorization_;
     header << "\r\n";
   }
 
