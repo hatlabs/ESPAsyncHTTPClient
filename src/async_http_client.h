@@ -193,7 +193,7 @@ class AsyncHTTPClient {
   bool has_header(const std::string name);
 
   int size(void);
-  int http_status() { return response_status_code_; }
+  int http_status_code() { return response_status_code_; }
 
   int response_string(char* dest);
   const std::string response_string();

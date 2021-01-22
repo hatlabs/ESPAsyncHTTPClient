@@ -33,7 +33,7 @@ void test_http_get_200() {
     delay(50);
   }
 
-  TEST_ASSERT_EQUAL(200, http.http_status());
+  TEST_ASSERT_EQUAL(200, http.http_status_code());
   
   String expected = "User-agent: *\nDisallow: /deny\n";
   String response = http.response_arduino_string();
@@ -124,7 +124,7 @@ void test_http_get_404() {
     delay(50);
   }
 
-  TEST_ASSERT_EQUAL(404, http.http_status());
+  TEST_ASSERT_EQUAL(404, http.http_status_code());
   http.close();
 }
 
@@ -165,7 +165,7 @@ void test_http_post_200() {
     delay(50);
   }
 
-  TEST_ASSERT_EQUAL(200, http.http_status());
+  TEST_ASSERT_EQUAL(200, http.http_status_code());
   String payload = http.response_arduino_string();
   TEST_ASSERT_TRUE(payload.indexOf("\"data\": \"param1=value1\",") >= 0);
   http.close();
@@ -196,7 +196,7 @@ void test_http_get_auth_200() {
     delay(50);
   }
   
-  TEST_ASSERT_EQUAL(200, http.http_status());
+  TEST_ASSERT_EQUAL(200, http.http_status_code());
   String payload = http.response_arduino_string();
   String expected = "{\n  \"authenticated\": true, \n  \"token\": \"123456\"\n}\n";
   TEST_ASSERT_EQUAL_STRING(expected.c_str(), payload.c_str());
@@ -228,7 +228,7 @@ void test_http_get_multi_packet_200() {
     delay(50);
   }
 
-  TEST_ASSERT_EQUAL(200, http.http_status());
+  TEST_ASSERT_EQUAL(200, http.http_status_code());
   
   String response = http.response_arduino_string();
 
@@ -265,7 +265,7 @@ void test_http_get_headers() {
     delay(50);
   }
 
-  TEST_ASSERT_EQUAL(200, http.http_status());
+  TEST_ASSERT_EQUAL(200, http.http_status_code());
   
   const char* respHeader = http.header("Server");
   TEST_ASSERT_EQUAL_STRING("gunicorn/19.9.0", respHeader);
