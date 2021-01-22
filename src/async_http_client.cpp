@@ -86,14 +86,13 @@ static inline void trim(std::string& s) {
 /**
  * constructor
  */
-AsyncHTTPClient::AsyncHTTPClient() : tcpclient_{new AsyncClient} {}
+AsyncHTTPClient::AsyncHTTPClient() {}
 
 /**
  * destructor
  */
 AsyncHTTPClient::~AsyncHTTPClient() {
-  tcpclient_->stop();
-  delete tcpclient_;
+  tcpclient_.stop();
 }
 
 /**
@@ -122,6 +121,8 @@ void AsyncHTTPClient::clear() {
   chunk_left_ = 0;
   last_error_ = HTTPClientError::NO_ERROR;
   last_activity_millis_ = millis();
+  request_type_ = "";
+  request_payload_ = "";
   data_stream_.str("");
   decode_stream_.str("");
   response_stream_.str("");
@@ -156,31 +157,36 @@ bool AsyncHTTPClient::begin_internal(const char* url,
 
   can_reuse_ = reuse_;
 
-  tcpclient_->onDisconnect(
+  tcpclient_.onConnect(
+      [this](void* args, AsyncClient* tcpclient) {
+        this->connect_event_handler(args);
+      },
+      &tcpclient_);
+  tcpclient_.onDisconnect(
       [this](void* args, AsyncClient* tcpclient) {
         this->disconnect_event_handler(args);
       },
-      tcpclient_);
-  tcpclient_->onData(
+      &tcpclient_);
+  tcpclient_.onData(
       [this](void* args, AsyncClient* tcpclient, void* data, size_t len) {
         this->data_event_handler(args, data, len);
       },
-      tcpclient_);
-  tcpclient_->onError(
+      &tcpclient_);
+  tcpclient_.onError(
       [this](void* args, AsyncClient* tcpclient, int8_t error) {
         this->error_event_handler(args, error);
       },
-      tcpclient_);
-  tcpclient_->onTimeout(
+      &tcpclient_);
+  tcpclient_.onTimeout(
       [this](void* args, AsyncClient* tcpclient, uint32_t time) {
         this->timeout_event_handler(args, time);
       },
-      tcpclient_);
-  tcpclient_->onPoll(
+      &tcpclient_);
+  tcpclient_.onPoll(
       [this](void* args, AsyncClient* tcpclient) {
         this->poll_event_handler(args);
       },
-      tcpclient_);
+      &tcpclient_);
 
   log_v("url: %s", url_.c_str());
   clear();
@@ -246,7 +252,7 @@ void AsyncHTTPClient::disconnect(bool keepalive) {
       update_state(HTTPConnectionState::KEEPALIVE);
     } else {
       log_d("tcp stop");
-      tcpclient_->stop();
+      tcpclient_.stop();
       // state update is done by event handler
     }
   } else {
@@ -259,10 +265,7 @@ void AsyncHTTPClient::disconnect(bool keepalive) {
  * @return connected status
  */
 bool AsyncHTTPClient::connected() {
-  if (tcpclient_) {
-    return tcpclient_->connected();
-  }
-  return false;
+  return tcpclient_.connected();
 }
 
 /**
@@ -385,10 +388,16 @@ bool AsyncHTTPClient::send_request(
 
   client_event_handler_ = client_event_handler;
 
-  // set async event handlers
-  tcpclient_->onConnect([=](void* arg, AsyncClient* tcpclient) {
+  if (!connected()) {
+    update_state(HTTPConnectionState::CONNECTING);
+  }
+  return connect();
+}
+
+void AsyncHTTPClient::connect_event_handler(void* arg) {
     update_state(HTTPConnectionState::CONNECTED);
-    if (request_payload_.length() > 0) {
+    size_t size = request_payload_.length();
+    if (size > 0) {
       this->add_header("Content-Length", String(size).c_str());
     }
 
@@ -408,13 +417,7 @@ bool AsyncHTTPClient::send_request(
     }
 
     update_state(HTTPConnectionState::REQUEST_SENT);
-  });
-
-  if (!connected()) {
-    update_state(HTTPConnectionState::CONNECTING);
   }
-  return connect();
-}
 
 void AsyncHTTPClient::disconnect_event_handler(void* args) {
   update_state(HTTPConnectionState::DISCONNECTED);
@@ -425,6 +428,7 @@ void AsyncHTTPClient::data_event_handler(void* args, void* data, size_t len) {
   memcpy(temp, data, len);
   temp[len] = 0;
   data_stream_.write((char*)data, len);
+  log_d("got data:\n%s\n---", (char*)data);
   while (data_stream_.rdbuf()->in_avail()) {
     switch (this->connection_state_) {
       case HTTPConnectionState::CONNECTED:
@@ -477,7 +481,7 @@ void AsyncHTTPClient::receive_header_data(bool trailer) {
 
 void AsyncHTTPClient::error_event_handler(void* args, int8_t error) {
   // TCP level error
-  const char* errStr = tcpclient_->errorToString(error);
+  const char* errStr = tcpclient_.errorToString(error);
   log_e("AsyncTCP error: %s", errStr);
   HTTPClientError clientError;
   switch (error) {
@@ -867,37 +871,34 @@ bool AsyncHTTPClient::connect(void) {
   if (connected()) {
     if (reuse_) {
       log_d("already connected, reusing connection");
+      // launch the connection callback manually
+      connect_event_handler(NULL);
     } else {
       log_d("already connected, try reuse!");
     }
     return true;
   }
 
-  if (!tcpclient_) {
-    log_d("HTTPClient::begin was not called or returned error");
-    return false;
-  }
-
-  return tcpclient_->connect(host_.c_str(), port_);
+  return tcpclient_.connect(host_.c_str(), port_);
 }
 
 bool AsyncHTTPClient::async_write(std::stringstream& data) {
   char buf[256];
   while (data.rdbuf()->in_avail()) {
     int size = data.readsome(buf, 256);
-    if (tcpclient_->space() > size) {
-      tcpclient_->add(buf, size);
+    if (tcpclient_.space() > size) {
+      tcpclient_.add(buf, size);
     } else {
       return false;
     }
   }
-  return tcpclient_->send();
+  return tcpclient_.send();
 }
 
 bool AsyncHTTPClient::async_write(std::string& data) {
   int size = data.length();
-  if (tcpclient_->space() > size) {
-    return tcpclient_->add(data.c_str(), size);
+  if (tcpclient_.space() > size) {
+    return tcpclient_.add(data.c_str(), size);
   }
   return false;
 }
@@ -908,9 +909,9 @@ bool AsyncHTTPClient::async_write(const char* data, size_t size) {
   temp[size] = 0;
   // FIXME: sending more than 5744 bytes (default value of TCP_WND)
   // might never work - proper buffering is needed
-  if (tcpclient_->space() > size) {
-    tcpclient_->add(data, size);
-    return tcpclient_->send();
+  if (tcpclient_.space() > size) {
+    tcpclient_.add(data, size);
+    return tcpclient_.send();
   }
   return false;
 }
@@ -1115,7 +1116,7 @@ int AsyncHTTPClient::report_error(HTTPClientError error) {
   log_w("error(%d): %s", error, error_string(error));
   if (connected()) {
     log_d("tcp stop");
-    tcpclient_->stop();
+    tcpclient_.stop();
   }
   update_state(HTTPConnectionState::ERROR);
   return (int)error;

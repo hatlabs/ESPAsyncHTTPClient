@@ -226,7 +226,7 @@ class AsyncHTTPClient {
   bool async_write(std::stringstream& data);
   bool async_write(std::string& data);
 
-  AsyncClient* tcpclient_ = NULL;
+  AsyncClient tcpclient_;
 
   ConnectionEventHandler client_event_handler_ = NULL;
 
@@ -247,6 +247,7 @@ class AsyncHTTPClient {
   std::string request_type_;
   std::string request_payload_;
 
+  void connect_event_handler(void* arg);
   void disconnect_event_handler(void* args);
   void data_event_handler(void* args, void* data, size_t len);
   void error_event_handler(void* args, int8_t error);

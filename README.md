@@ -6,10 +6,10 @@
 
 - ESP8266 support
 - chunked transfer encoding hasn't been tested
-- keepalive functionality hasn't been tested
 - multiline headers not supported yet
 - output buffering (sending more than 5744 bytes at a time)
 - anything outside of the unit tests, basically...
+- no HTTPS
 
 ## To be done
 

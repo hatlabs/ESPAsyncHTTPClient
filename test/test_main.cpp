@@ -145,13 +145,10 @@ void test_http_post_200() {
       // Serial.printf("New state: %s\n", http.connection_state_string(state));
       switch (state) {
         case HTTPConnectionState::DISCONNECTED:
-          Serial.println("DISCONNECTED");
           break;
         case HTTPConnectionState::ERROR:
-          Serial.println("ERROR");
           break;
         case HTTPConnectionState::DONE:
-          Serial.println("DONE");
           done = true;
           break;
         default:
@@ -270,11 +267,78 @@ void test_http_get_headers() {
   const char* respHeader = http.header("Server");
   TEST_ASSERT_EQUAL_STRING("gunicorn/19.9.0", respHeader);
 
-  Serial.printf("asserted successfully\n");
-
   http.close();
 }
 
+int get_robots(AsyncHTTPClient& http) {
+
+  bool done = false;
+  http.begin("http://httpbin.org/robots.txt");
+  
+  http.add_response_header_filter("Server");
+  http.add_response_header_filter("Access-Control-Allow-Origin");
+
+  http.GET([&](HTTPConnectionState state) {
+    switch (state) {
+      case HTTPConnectionState::DISCONNECTED:
+      case HTTPConnectionState::ERROR:
+      case HTTPConnectionState::DONE:
+        done = true;
+        break;
+      default:
+        break;
+    }
+  });
+
+  // verify that the operation was not synchronous
+  TEST_ASSERT_EQUAL(false, done);
+
+  while (!done) {
+    delay(50);
+  }
+
+  return http.http_status_code();
+}
+
+void test_http_get_repeat() {
+  AsyncHTTPClient http;
+  
+  http.reuse(false);
+
+  int status = get_robots(http);
+
+  TEST_ASSERT_EQUAL(200, status);
+
+  // second round
+
+  status = get_robots(http);
+  TEST_ASSERT_EQUAL(200, status);
+
+  const char* respHeader = http.header("Server");
+  TEST_ASSERT_EQUAL_STRING("gunicorn/19.9.0", respHeader);
+
+  http.close();  
+}
+
+void test_http_get_reuse() {
+  AsyncHTTPClient http;
+  
+  http.reuse(true);
+
+  int status = get_robots(http);
+
+  TEST_ASSERT_EQUAL(200, status);
+
+  // second round
+
+  status = get_robots(http);
+  TEST_ASSERT_EQUAL(200, status);
+
+  const char* respHeader = http.header("Server");
+  TEST_ASSERT_EQUAL_STRING("gunicorn/19.9.0", respHeader);
+
+  http.close();  
+}
 /////////////////
 // scaffolding below
 
@@ -297,10 +361,12 @@ void setup() {
     Serial.println("Establishing connection to WiFi..");
   }
   delay(200);
+  Serial.println("Begin testing");
   UNITY_BEGIN();
 }
 
 void loop() {
+  Serial.println("in loop");
   RUN_TEST(test_http_get_200);
   RUN_TEST(test_http_get_dns_site_not_found);
   RUN_TEST(test_http_get_connection_refused);
@@ -309,6 +375,8 @@ void loop() {
   RUN_TEST(test_http_get_auth_200);
   RUN_TEST(test_http_get_multi_packet_200);
   RUN_TEST(test_http_get_headers);
+  RUN_TEST(test_http_get_repeat);
+  RUN_TEST(test_http_get_reuse);
 
   UNITY_END();
 }
